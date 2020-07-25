@@ -271,9 +271,10 @@ impl Game for TestGame
     }
     fn spin_once(&mut self) -> bool
     {
+        print!("{}", &self.get_string());
         for (_name, _player) in &self.players
         {
-            print!("player {}'s turn\n", _name);
+            print!("{}'s turn\n", _name);
 
             // check if can finish game
             let mut _in_str : String = String::from("");
@@ -298,8 +299,8 @@ impl Game for TestGame
             }
 
             // take chosen cards(alteast 1) from current player hand to table
-            let mut _found_atleast_one = false;
-            let mut _card : Card = Card::new(0,0);
+            let mut _exit_succesfully = false;
+            let mut _to_table_cards : Vec<Card> = Vec::new();
             loop
             {
                 let _hand_size = _player.borrow_mut().count();
@@ -309,10 +310,27 @@ impl Game for TestGame
                 }
 
                 // check if can and wants to place more cards after first time
+                if _exit_succesfully
+                {
+                    loop
+                    {
+                        print!("{}", &self.get_string());
+                        print!("{} choose another card, please press y or n?\n", _name);
+                        _in_str = self.get_input();
+                        if _in_str.to_string() == "y" || _in_str.to_string() == "n"
+                        {
+                            break;
+                        } 
+                    }
+                    if _in_str == "n"
+                    {
+                        break;
+                    }
+                }
 
                 print!("choose a card to place between 0 and {}\n", _hand_size - 1);
                 _in_str = self.get_input();
-                
+
                 for i in 0.._hand_size
                 {
                     if _in_str == format!("{}", i)
@@ -320,17 +338,33 @@ impl Game for TestGame
                         let res = _player.borrow_mut().take_specific(i);
                         if res.0
                         {
-                            _card = res.1;
-                            _found_atleast_one = true;
+                            
+                            // check if card is playable
+                            if _to_table_cards.len() > 0
+                            {
+                                let mut _all_are_equal = true;
+                                for _card in _to_table_cards.iter()
+                                {
+                                    if res.1.card_type != _card.card_type
+                                    {
+                                        _all_are_equal = false;
+                                    }
+                                }
+
+                                if !_all_are_equal
+                                {
+                                    // stop if chosen card is not not equal to prior chosen cards
+                                    _player.borrow_mut().give(res.1);
+                                    break;
+                                }
+                            }
+
+                            // add the card
+                            _to_table_cards.push(res.1);
+                            _exit_succesfully = true;
                             break;
                         }
                     }
-                }
-                    
-                // TEMP
-                if _found_atleast_one
-                {
-                    break;
                 }
             }
 
@@ -363,10 +397,15 @@ impl Game for TestGame
             }
 
             // add the players cards to the table
-            if _found_atleast_one
+            if _exit_succesfully
             {
-                self.table.give(_card);
+                for _card in _to_table_cards
+                {
+                    self.table.give(_card);
+                }
             }
+
+            print!("{}", &self.get_string());
         }
         return true;
     }
@@ -400,8 +439,9 @@ impl StateFormat for Deck
 {
     fn get_string(&self) -> String {
         let mut txt = String::from("");
-        for _c in self.cards.iter()
+        for (_i, _c) in self.cards.iter().enumerate()
         {
+            txt.push_str(&format!("{}: ", _i));
             txt.push_str(&_c.get_string());
             txt.push_str("\n");
         }

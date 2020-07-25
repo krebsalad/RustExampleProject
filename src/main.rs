@@ -16,7 +16,7 @@ fn main() {
 
     while game.spin_once()
     {
-        print!("{}", game.get_string());
+       
     }
 
     
