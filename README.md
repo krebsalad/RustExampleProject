@@ -1,2 +1,2 @@
-# rust_card_game
+# RustExampleProject
 using to practice rust
