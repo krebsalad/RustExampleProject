@@ -13,12 +13,15 @@ pub trait Game
     fn setup(&mut self) -> bool;
     fn spin_once(&mut self) -> bool;
     fn stop(&mut self) -> bool;
+    fn calculate_score(&self, _deck : &Deck) -> i32;
 }
 
 pub trait CardShare
 {
     fn take(&mut self) -> (bool, Card);
+    fn take_specific(&mut self, _index : usize) -> (bool, Card);
     fn give(&mut self, _card : Card) -> bool;
+    fn count(&self) -> usize;
 }
 
 // Core
@@ -42,7 +45,6 @@ pub struct Deck
 pub struct Player
 {
     pub name : String,
-    pub score : i32,
     pub hand : Deck,
 }
 
@@ -52,6 +54,7 @@ pub struct TestGame
 {
     
     pub deck : Deck,
+    pub table : Deck,
     pub players : HashMap<String, RefCell<Player>>,
 }
 
@@ -74,9 +77,13 @@ impl Player
     {
         return Player {
             name: _name,
-            score: 0,
             hand: Deck::new(),
         }
+    }
+
+    pub fn get_score(&mut self,  _game : &dyn Game) -> i32
+    {
+        return _game.calculate_score(&self.hand);
     }
 }
 
@@ -134,9 +141,26 @@ impl TestGame
     {
         return TestGame {
             deck : Deck::new(),
+            table : Deck::new(),
             players : HashMap::new(),
         }
     }
+    pub fn get_input(&self) -> String
+    {
+        use std::io::{stdin,stdout,Write};
+        let mut s=String::new();
+        print!("Please enter some text: ");
+        let _=stdout().flush();
+        stdin().read_line(&mut s).expect("Did not enter a correct string");
+        if let Some('\n')=s.chars().next_back() {
+            s.pop();
+        }
+        if let Some('\r')=s.chars().next_back() {
+            s.pop();
+        }
+        return s;
+    }
+    
 }
 
 
@@ -148,9 +172,19 @@ impl CardShare for Player
         return self.hand.take();
     }
 
+    fn take_specific(&mut self, _index : usize) -> (bool, Card)
+    {
+        return self.hand.take_specific(_index);
+    }
+
     fn give(&mut self, _card : Card) -> bool
     {
         return self.hand.give(_card);
+    }
+
+    fn count(&self) -> usize
+    {
+        return self.hand.count();
     }
 }
 
@@ -159,12 +193,19 @@ impl CardShare for Deck
     
     fn take(&mut self) -> (bool, Card)
     {
+        let _card_i : usize =  self.cards.len() - 1;
+        return self.take_specific(_card_i);
+    }
+
+    fn take_specific(&mut self, _index : usize) -> (bool, Card)
+    {
         if self.cards.len() == 0
         {
             return (false, Card::new(0, 0));
         }
-        let mut _card = self.cards[0];
-        self.cards.remove(0);
+        
+        let mut _card = self.cards[_index];
+        self.cards.remove(_index);
         return (true, _card);
     }
 
@@ -172,6 +213,11 @@ impl CardShare for Deck
     {
         self.cards.push(_card);
         return true;
+    }
+
+    fn count(&self) -> usize
+    {
+        return self.cards.len();
     }
 
 }
@@ -186,6 +232,7 @@ impl Game for TestGame
         self.deck.shuffle(3);
         self.players.insert("player1".to_string(), RefCell::new(Player::new("player1".to_string())));
         self.players.insert("player2".to_string(), RefCell::new(Player::new("player2".to_string())));
+        
         for _i in 0..5
         {
             for (_name, _player) in &self.players
@@ -196,18 +243,139 @@ impl Game for TestGame
                     let mut _player_ref = self.players.get(_name).unwrap().borrow_mut();
                     _player_ref.give(res.1);
                 }
+                else
+                {
+                    return false;
+                }
+            }
+        }
+        let res = self.deck.take();
+        if res.0
+        {
+            self.table.give(res.1);
+        }
+        else
+        {
+            return false;
+        }
+        return true;
+    }
+    fn calculate_score(&self, _deck : &Deck) -> i32
+    {
+        let mut _score = 0;
+        for _c in &_deck.cards
+        {
+            _score += _c.card_type;
+        }
+        return _score;
+    }
+    fn spin_once(&mut self) -> bool
+    {
+        for (_name, _player) in &self.players
+        {
+            print!("player {}'s turn\n", _name);
+
+            // check if can finish game
+            let mut _in_str : String = String::from("");
+            if _player.borrow_mut().get_score(self) < 5
+            {
+                // ask if want to finish
+                print!("type y to finish game or n to continue\n");
+                loop
+                {
+                    _in_str = self.get_input();
+                    if _in_str.to_string() == "y" || _in_str.to_string() == "n"
+                    {
+                        break;
+                    }
+                    print!("wrong input!\n");  
+                }
+                if _in_str == "y"
+                {
+                    print!("game ended, {} won!!\n", _name); 
+                    return false;
+                }
+            }
+
+            // take chosen cards(alteast 1) from current player hand to table
+            let mut _found_atleast_one = false;
+            let mut _card : Card = Card::new(0,0);
+            loop
+            {
+                let _hand_size = _player.borrow_mut().count();
+                if _hand_size == 0
+                {
+                    break;
+                }
+
+                // check if can and wants to place more cards after first time
+
+                print!("choose a card to place between 0 and {}\n", _hand_size - 1);
+                _in_str = self.get_input();
+                
+                for i in 0.._hand_size
+                {
+                    if _in_str == format!("{}", i)
+                    {
+                        let res = _player.borrow_mut().take_specific(i);
+                        if res.0
+                        {
+                            _card = res.1;
+                            _found_atleast_one = true;
+                            break;
+                        }
+                    }
+                }
+                    
+                // TEMP
+                if _found_atleast_one
+                {
+                    break;
+                }
+            }
+
+            // take card from deck OR from table 
+            print!("press d to choose from deck or t to choose from table\n");
+            loop
+            {
+                _in_str = self.get_input();
+                if _in_str.to_string() == "d" || _in_str.to_string() == "t"
+                {
+                    break;
+                }
+                print!("wrong input!\n");  
+            }
+            if _in_str == "t"
+            {
+                let res = self.table.take();
+                if res.0
+                {
+                    _player.borrow_mut().give(res.1);
+                }
+            }
+            else
+            {
+                let res = self.deck.take();
+                if res.0
+                {
+                    _player.borrow_mut().give(res.1);
+                }
+            }
+
+            // add the players cards to the table
+            if _found_atleast_one
+            {
+                self.table.give(_card);
             }
         }
         return true;
     }
-    fn spin_once(&mut self) -> bool
-    {
-        
-        return true;
-    }
+    
     fn stop(&mut self) -> bool
     {
         self.deck.clear();
+        self.table.clear();
+        self.players.clear();
         return true;
     }
 }
@@ -245,11 +413,14 @@ impl StateFormat for TestGame
 {
     fn get_string(&self) -> String {
         
-        let mut txt = String::from("");
+        let mut txt = String::from("--------\ntable:\n");
+        txt.push_str(&self.table.get_string());
+        txt.push_str("--------\n\n");
         for (_name, _player) in &self.players
         {
             txt.push_str("--------\n");
             txt.push_str(&_player.borrow().get_string());
+            txt.push_str(&format!("score: {}\n", _player.borrow_mut().get_score(self)));
             txt.push_str("--------\n\n");
         }
         return txt;
